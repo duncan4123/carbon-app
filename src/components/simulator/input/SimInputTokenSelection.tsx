@@ -1,12 +1,12 @@
 import { useNavigate } from '@tanstack/react-router';
 import { useTokens } from 'hooks/useTokens';
 import { FC } from 'react';
-import { Tooltip } from 'components/common/tooltip/Tooltip';
 import { SelectTokenButton } from 'components/common/selectToken';
 import { ReactComponent as IconArrow } from 'assets/icons/arrowDown.svg';
 import { useModal } from 'hooks/useModal';
 import { Warning } from 'components/common/WarningMessageWithIcon';
 import { cn } from 'utils/helpers';
+import { Tooltip } from 'components/common/tooltip/Tooltip';
 
 interface Props {
   baseToken?: string;
@@ -81,7 +81,7 @@ export const SimInputTokenSelection: FC<Props> = ({
         />
         <button
           type="button"
-          className="border-background-900 relative z-10 grid h-40 w-40 flex-shrink-0 -rotate-90 place-items-center rounded-full border-[5px] bg-black"
+          className="border-background-900 hover:bg-background-800 relative z-10 grid h-40 w-40 flex-shrink-0 -rotate-90 place-items-center rounded-full border-[5px] bg-black"
           onClick={() => {
             navigate({
               search: { baseToken: quoteToken, quoteToken: baseToken },

@@ -15,6 +15,8 @@ import { TradeWidgetBuySellProps } from 'components/trade/tradeWidget/TradeWidge
 import { useTradeAction } from 'components/trade/tradeWidget/useTradeAction';
 import { prettifyNumber } from 'utils/helpers';
 import { isTouchedZero, isZero } from 'components/strategies/common/utils';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { TradeMarketSearch } from 'libs/routing/routes/trade';
 
 export const useBuySell = ({
   source,
@@ -22,13 +24,14 @@ export const useBuySell = ({
   sourceBalanceQuery,
   buy = false,
 }: TradeWidgetBuySellProps) => {
+  const { source: sourceInput = '', target: targetInput = '' } = useSearch({
+    strict: false,
+  }) as TradeMarketSearch;
   const { user, provider } = useWagmi();
   const { openModal } = useModal();
   const { selectedFiatCurrency } = useFiatCurrency();
   const sourceTokenPriceQuery = useGetTokenPrice(source.address);
   const targetTokenPriceQuery = useGetTokenPrice(target.address);
-  const [sourceInput, setSourceInput] = useState('');
-  const [targetInput, setTargetInput] = useState('');
   const [isTradeBySource, setIsTradeBySource] = useState(true);
   const [tradeActions, setTradeActions] = useState<TradeActionBNStr[]>([]);
   const [tradeActionsRes, setTradeActionsRes] = useState<Action[]>([]);
@@ -39,7 +42,6 @@ export const useBuySell = ({
   const [isLiquidityError, setIsLiquidityError] = useState(false);
   const [isSourceEmptyError, setIsSourceEmptyError] = useState(false);
   const [isTargetEmptyError, setIsTargetEmptyError] = useState(false);
-  const [isAwaiting, setIsAwaiting] = useState(false);
 
   const { calcMaxInput } = useTradeAction({
     source,
@@ -50,6 +52,22 @@ export const useBuySell = ({
     source.address,
     target.address
   );
+
+  const navigate = useNavigate({ from: '/trade/market' });
+  const setSourceInput = (value: string) => {
+    navigate({
+      search: (s) => ({ ...s, source: value }),
+      replace: true,
+      resetScroll: false,
+    });
+  };
+  const setTargetInput = (value: string) => {
+    navigate({
+      search: (s) => ({ ...s, target: value }),
+      replace: true,
+      resetScroll: false,
+    });
+  };
 
   const { getFiatValue: getFiatValueSource } = useFiatCurrency(source);
 
@@ -75,12 +93,11 @@ export const useBuySell = ({
     target,
   ]);
 
-  const { trade, approval } = useTradeAction({
+  const { trade, isAwaiting, approval } = useTradeAction({
     source,
     sourceInput,
     isTradeBySource,
     onSuccess: (txHash: string) => {
-      setIsAwaiting(false);
       clearInputs();
       buy
         ? carbonEvents.trade.tradeBuy({
@@ -124,12 +141,12 @@ export const useBuySell = ({
 
     if (isTradeBySource) {
       if (checkSource()) {
-        setTargetInput('...');
+        setTargetInput('');
         return set();
       }
     } else {
       if (checkTarget()) {
-        setSourceInput('...');
+        setSourceInput('');
         return set();
       }
     }
@@ -236,14 +253,12 @@ export const useBuySell = ({
         isTradeBySource,
         sourceInput: sourceInput,
         targetInput: targetInput,
-        setIsAwaiting,
       });
 
     if (approval.approvalRequired) {
       openModal('txConfirm', {
         approvalTokens: approval.tokens,
         onConfirm: () => {
-          setIsAwaiting(true);
           tradeFn();
         },
         buttonLabel: 'Confirm Trade',
@@ -256,7 +271,6 @@ export const useBuySell = ({
         context: 'trade',
       });
     } else {
-      setIsAwaiting(true);
       void tradeFn();
     }
   }, [

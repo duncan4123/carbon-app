@@ -1,14 +1,12 @@
+import { FC, ReactNode, createContext, useCallback, useContext } from 'react';
 import {
   Activity,
   ActivityMeta,
   QueryActivityParams,
 } from 'libs/queries/extApi/activity';
 import { ActivitySearchParams } from './utils';
-import { FC, ReactNode, createContext, useCallback, useContext } from 'react';
 import { useActivityQuery, useActivityMetaQuery } from './useActivityQuery';
 import { CarbonLogoLoading } from 'components/common/CarbonLogoLoading';
-import { NotFound } from 'components/common/NotFound';
-import { useGetUserStrategies } from 'libs/queries';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { isEmpty } from 'utils/helpers/operators';
 import { addDays, getUnixTime } from 'date-fns';
@@ -18,7 +16,8 @@ interface ActivityContextType {
   activities: Activity[];
   meta?: ActivityMeta;
   size?: number;
-  status: FetchStatus;
+  status: 'error' | 'pending' | 'success';
+  fetchStatus: FetchStatus;
   queryParams: QueryActivityParams;
   searchParams: ActivitySearchParams;
   setSearchParams: (searchParams: Partial<ActivitySearchParams>) => any;
@@ -26,7 +25,8 @@ interface ActivityContextType {
 
 const ActivityContext = createContext<ActivityContextType>({
   activities: [],
-  status: 'idle',
+  status: 'pending',
+  fetchStatus: 'idle',
   queryParams: {},
   searchParams: { limit: 10, offset: 0 },
   setSearchParams: () => {},
@@ -39,10 +39,7 @@ const getQueryParams = (
   const params = { ...baseParams };
   if (searchParams.actions) params.actions = searchParams.actions.join(',');
   if (searchParams.ids) params.strategyIds = searchParams.ids?.join(',');
-  if (searchParams.pairs)
-    params.pairs = searchParams.pairs
-      .map((pair) => `${pair[0]}_${pair[1]}`)
-      .join(',');
+  if (searchParams.pairs) params.pairs = searchParams.pairs.join(',');
   if (searchParams.start)
     params.start = getUnixTime(new Date(searchParams.start));
   if (searchParams.end)
@@ -56,14 +53,12 @@ const getQueryParams = (
 
 interface Props {
   params: QueryActivityParams;
-  empty?: ReactNode;
   children: ReactNode;
 }
 type ParamsKey = Extract<keyof QueryActivityParams, string>;
-export const ActivityProvider: FC<Props> = ({ children, params, empty }) => {
+export const ActivityProvider: FC<Props> = ({ children, params }) => {
   const nav = useNavigate();
   const searchParams: ActivitySearchParams = useSearch({ strict: false });
-
   const limit = searchParams.limit ?? 10;
   const offset = searchParams.offset ?? 0;
 
@@ -76,10 +71,6 @@ export const ActivityProvider: FC<Props> = ({ children, params, empty }) => {
   // all filtering items for the base query
   // Note: This could be improved in the backend with a single request, but at the time of writing this code, this was not an option
   const activityMetaQuery = useActivityMetaQuery(params);
-
-  const userStrategiesQuery = useGetUserStrategies({
-    user: queryParams.ownerId,
-  });
 
   const setSearchParams = useCallback(
     (changes: Partial<ActivitySearchParams>) => {
@@ -103,36 +94,18 @@ export const ActivityProvider: FC<Props> = ({ children, params, empty }) => {
     [nav]
   );
 
-  const isPending = activityQuery.isPending || userStrategiesQuery.isPending;
-
-  if (isPending) {
+  if (activityMetaQuery.isPending) {
     return <CarbonLogoLoading className="h-[80px] self-center" />;
   }
+
   const activities = activityQuery.data ?? [];
   const size = activitySizeQuery.data?.size;
   const meta = activityMetaQuery.data;
 
-  if (!activities.length) {
-    if (empty) {
-      const userStrategies = userStrategiesQuery.data;
-      const userHasNoStrategies =
-        userStrategiesQuery.isFetched &&
-        (!userStrategies || userStrategies.length === 0);
-      if (userHasNoStrategies) return empty;
-    }
-    return (
-      <NotFound
-        variant="error"
-        title="We couldn't find any activities"
-        text="Try entering a different wallet address or choose a different token pair."
-        bordered
-      />
-    );
-  }
-
   const ctx: ActivityContextType = {
     activities,
-    status: activityQuery.fetchStatus,
+    status: activityQuery.status,
+    fetchStatus: activityQuery.fetchStatus,
     meta: meta,
     size: size,
     queryParams,
@@ -155,7 +128,10 @@ export function useActivity(): ActivityContextType {
 
 export function useActivityPagination() {
   const { size = 0, searchParams, setSearchParams } = useActivity();
-  const { limit = 10, offset = 0 } = searchParams;
+  const { limit: rawLimit = 10, offset: rawOffset = 0 } = searchParams;
+
+  const limit = Number(rawLimit);
+  const offset = Number(rawOffset);
 
   const currentPage = Math.floor(offset / limit) + 1;
   const maxPage = Math.ceil(size / limit);
